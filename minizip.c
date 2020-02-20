@@ -277,61 +277,134 @@ int32_t minizip_add_overwrite_cb(void *handle, void *userdata, const char *path)
 
     return MZ_OK;
 }
+#include "mz_compat.h"
+zipFile _zip;
+//add
+int32_t mz_hq_add_path(const char *fileName, const char *password, minizip_opt *options)
+{
+	FILE *input = fopen(fileName, "r");
+	if (NULL == input) {
+		return -1;
+	}
+	printf("=============\n");
+	//if (!fileName) {
+	//	fileName = path.lastPathComponent;
+	//}
+	zip_fileinfo zipInfo = {0};
+
+	//[SSZipArchive zipInfo : &zipInfo setAttributesOfItemAtPath : path];
+
+	void *buffer = malloc(16384);
+	if (buffer == NULL)
+	{
+		fclose(input);
+		return -1;
+	}
+
+	//int error = _zipOpenEntry(_zip, fileName, &zipInfo, compressionLevel, password, aes);
+
+	zipOpenNewFileInZip5(_zip, fileName, &zipInfo, NULL, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, password, NULL, 0, 0, 0);
+
+	while (!feof(input) && !ferror(input))
+	{
+		unsigned int len = (unsigned int)fread(buffer, 1, 16384, input);
+		zipWriteInFileInZip(_zip, buffer, len);
+	}
+
+	zipCloseFileInZip(_zip);
+	free(buffer);
+	fclose(input);
+	return 0;
+}
+//add
 
 int32_t minizip_add(const char *path, const char *password, minizip_opt *options, int32_t arg_count, const char **args)
 {
-    void *writer = NULL;
-    int32_t err = MZ_OK;
-    int32_t err_close = MZ_OK;
-    int32_t i = 0;
-    const char *filename_in_zip = NULL;
+	void *writer = NULL;
+	int32_t err = MZ_OK;
+	int32_t err_close = MZ_OK;
+	int32_t i = 0;
+	const char *filename_in_zip = NULL;
 
+	
+	printf("Archive %s\n", path);
+	_zip = zipOpen(path, APPEND_STATUS_CREATE);
+	if(!_zip)
+	{
+		printf("zipOpen Error\n");
+		return -1;
+	}
 
-    printf("Archive %s\n", path);
+	for (i = 0; i < arg_count; i += 1)
+	{
+	    filename_in_zip = args[i];
+	
+	    /* Add file system path to archive */
+	    err = mz_hq_add_path(filename_in_zip, NULL, options->include_path);
+	    if (err != MZ_OK)
+	        printf("Error %" PRId32 " adding path to archive %s\n", err, filename_in_zip);
+	}
 
-    /* Create zip writer */
-    mz_zip_writer_create(&writer);
-    mz_zip_writer_set_password(writer, password);
-    mz_zip_writer_set_compress_method(writer, options->compress_method);
-    mz_zip_writer_set_compress_level(writer, options->compress_level);
-    mz_zip_writer_set_follow_links(writer, options->follow_links);
-    mz_zip_writer_set_store_links(writer, options->store_links);
-    mz_zip_writer_set_overwrite_cb(writer, options, minizip_add_overwrite_cb);
-    mz_zip_writer_set_progress_cb(writer, options, minizip_add_progress_cb);
-    mz_zip_writer_set_entry_cb(writer, options, minizip_add_entry_cb);
-    mz_zip_writer_set_zip_cd(writer, options->zip_cd);
-    if (options->cert_path != NULL)
-        mz_zip_writer_set_certificate(writer, options->cert_path, options->cert_pwd);
-
-    err = mz_zip_writer_open_file(writer, path, options->disk_size, options->append);
-
-    if (err == MZ_OK)
-    {
-        for (i = 0; i < arg_count; i += 1)
-        {
-            filename_in_zip = args[i];
-
-            /* Add file system path to archive */
-            err = mz_zip_writer_add_path(writer, filename_in_zip, NULL, options->include_path, 1);
-            if (err != MZ_OK)
-                printf("Error %" PRId32 " adding path to archive %s\n", err, filename_in_zip);
-        }
-    }
-    else
-    {
-        printf("Error %" PRId32 " opening archive for writing\n", err);
-    }
-
-    err_close = mz_zip_writer_close(writer);
-    if (err_close != MZ_OK)
-    {
-        printf("Error %" PRId32 " closing archive for writing %s\n", err_close, path);
-        err = err_close;
-    }
-
-    mz_zip_writer_delete(&writer);
-    return err;
+	zipClose(_zip, NULL);
+	
+	return err;
 }
+
+
+//int32_t minizip_add(const char *path, const char *password, minizip_opt *options, int32_t arg_count, const char **args)
+//{
+//    void *writer = NULL;
+//    int32_t err = MZ_OK;
+//    int32_t err_close = MZ_OK;
+//    int32_t i = 0;
+//    const char *filename_in_zip = NULL;
+//
+//
+//    printf("Archive %s\n", path);
+//
+//    /* Create zip writer */
+//    mz_zip_writer_create(&writer);
+//    mz_zip_writer_set_password(writer, password);
+//    mz_zip_writer_set_compress_method(writer, options->compress_method);
+//    mz_zip_writer_set_compress_level(writer, options->compress_level);
+//    mz_zip_writer_set_follow_links(writer, options->follow_links);
+//    mz_zip_writer_set_store_links(writer, options->store_links);
+//    mz_zip_writer_set_overwrite_cb(writer, options, minizip_add_overwrite_cb);
+//    mz_zip_writer_set_progress_cb(writer, options, minizip_add_progress_cb);
+//    mz_zip_writer_set_entry_cb(writer, options, minizip_add_entry_cb);
+//    mz_zip_writer_set_zip_cd(writer, options->zip_cd);
+//    if (options->cert_path != NULL)
+//        mz_zip_writer_set_certificate(writer, options->cert_path, options->cert_pwd);
+//
+//    err = mz_zip_writer_open_file(writer, path, options->disk_size, options->append);
+//
+//    if (err == MZ_OK)
+//    {
+//        for (i = 0; i < arg_count; i += 1)
+//        {
+//            filename_in_zip = args[i];
+//
+//            /* Add file system path to archive */
+//            err = mz_zip_writer_add_path(writer, filename_in_zip, NULL, options->include_path, 1);
+//            if (err != MZ_OK)
+//                printf("Error %" PRId32 " adding path to archive %s\n", err, filename_in_zip);
+//        }
+//    }
+//    else
+//    {
+//        printf("Error %" PRId32 " opening archive for writing\n", err);
+//    }
+//
+//    err_close = mz_zip_writer_close(writer);
+//    if (err_close != MZ_OK)
+//    {
+//        printf("Error %" PRId32 " closing archive for writing %s\n", err_close, path);
+//        err = err_close;
+//    }
+//
+//    mz_zip_writer_delete(&writer);
+//    return err;
+//}
 
 /***************************************************************************/
 
