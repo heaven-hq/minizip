@@ -150,6 +150,12 @@ int zipOpenNewFileInZip5(zipFile file, const char *filename, const zip_fileinfo 
     mz_zip_file file_info;
     uint64_t dos_date = 0;
 
+    uint32_t target_attrib = 0;//add
+    uint32_t src_attrib = 0;//add
+    int32_t err = MZ_OK;//add
+    uint8_t src_sys = 0;//add
+    char link_path[1024];//add
+    
 
     MZ_UNUSED(strategy);
     MZ_UNUSED(memLevel);
@@ -163,6 +169,10 @@ int zipOpenNewFileInZip5(zipFile file, const char *filename, const zip_fileinfo 
 
     memset(&file_info, 0, sizeof(file_info));
 
+    file_info.version_madeby = MZ_VERSION_MADEBY;//add
+    mz_os_get_file_attribs(filename, &src_attrib);//add
+    src_sys = MZ_HOST_SYSTEM(file_info.version_madeby);//add
+
     if (zipfi != NULL)
     {
         if (zipfi->mz_dos_date != 0)
@@ -171,7 +181,25 @@ int zipOpenNewFileInZip5(zipFile file, const char *filename, const zip_fileinfo 
             dos_date = mz_zip_tm_to_dosdate(&zipfi->tmz_date);
 
         file_info.modified_date = mz_zip_dosdate_to_time_t(dos_date);
-        file_info.external_fa = zipfi->external_fa;
+//add        file_info.external_fa = zipfi->external_fa;
+        if ((src_sys != MZ_HOST_SYSTEM_MSDOS) && (src_sys != MZ_HOST_SYSTEM_WINDOWS_NTFS))
+        {
+            /* High bytes are OS specific attributes, low byte is always DOS attributes */
+            if (mz_zip_attrib_convert(src_sys, src_attrib, MZ_HOST_SYSTEM_MSDOS, &target_attrib) == MZ_OK)
+                file_info.external_fa = target_attrib;
+            file_info.external_fa |= (src_attrib << 16);
+        }
+        else
+        {
+            file_info.external_fa = src_attrib;
+        }
+
+        if (mz_os_is_symlink(filename) == MZ_OK)
+        {
+            err = mz_os_read_symlink(filename, link_path, sizeof(link_path));
+            if (err == MZ_OK)
+                file_info.linkname = link_path;
+        }
         file_info.internal_fa = zipfi->internal_fa;
     }
 
@@ -184,7 +212,7 @@ int zipOpenNewFileInZip5(zipFile file, const char *filename, const zip_fileinfo 
     /* file_info.extrafield_local_size = size_extrafield_local; */
     file_info.extrafield = extrafield_global;
     file_info.extrafield_size = size_extrafield_global;
-    file_info.version_madeby = version_madeby;
+//add    file_info.version_madeby = version_madeby;
     file_info.comment = comment;
     file_info.flag = flag_base;
     if (zip64)
