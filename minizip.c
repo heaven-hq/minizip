@@ -280,8 +280,9 @@ int32_t minizip_add_overwrite_cb(void *handle, void *userdata, const char *path)
 #include "mz_compat.h"
 zipFile _zip;
 //add
-int32_t mz_hq_add_path(const char *fileName, const char *password, minizip_opt *options)
+int32_t writeFileAtPath(const char *fileName, const char *password, minizip_opt *options)
 {
+	int32_t err = MZ_OK;
 	FILE *input = fopen(fileName, "r");
 	if (NULL == input) {
 		return -1;
@@ -304,19 +305,66 @@ int32_t mz_hq_add_path(const char *fileName, const char *password, minizip_opt *
 	//int error = _zipOpenEntry(_zip, fileName, &zipInfo, compressionLevel, password, aes);
 
 	zipOpenNewFileInZip5(_zip, fileName, &zipInfo, NULL, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, password, NULL, 0, 0, 0);
-
-	while (!feof(input) && !ferror(input))
+	
+	if (mz_os_is_symlink(fileName) == MZ_OK)
 	{
-		unsigned int len = (unsigned int)fread(buffer, 1, 16384, input);
-		zipWriteInFileInZip(_zip, buffer, len);
+		char link_path[1024];
+		err = mz_os_read_symlink(fileName, link_path, sizeof(link_path));
+		if (err == MZ_OK)
+			zipWriteInFileInZip(_zip, link_path, sizeof(link_path));
+	} else {
+		while (!feof(input) && !ferror(input))
+		{
+			unsigned int len = (unsigned int)fread(buffer, 1, 16384, input);
+			zipWriteInFileInZip(_zip, buffer, len);
+		}
 	}
-
 	zipCloseFileInZip(_zip);
 	free(buffer);
 	fclose(input);
 	return 0;
 }
 //add
+int32_t writeFolderAtPath(char *fileName, const char *passord, nimizip_opt *options)
+{
+	DIR *dir = NULL;
+	struct dirent *entry = NULL;
+	int32_t err = MZ_OK;
+	int16_t is_dir = 0;
+	const char *filename = NULL;
+	const char *filenameinzip = fileName;
+	char *wildcard_ptr = NULL;
+	char full_path[1024];
+	char path_dir[1024];
+	
+	if (mz_os_is_dir(fileName) == MZ_OK)
+		is_dir = 1;
+	if (!is_dir)
+	{
+		err = writeFileAtPath(fileName, NULL, 0);
+		return err;
+	} else {
+		dir = mz_os_open_dir(fileName);
+		
+		if (dir == NULL)
+			return MZ_EXIST_ERROR;
+		
+		while ((entry = mz_os_read_dir(dir)) != NULL)
+		{
+			if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+				continue;
+			full_path[0] = 0;
+			mz_path_combine(full_path, fileName, sizeof(full_path));
+			mz_path_combine(full_path, entry->d_name, sizeof(full_path));
+			
+			err = writeFolderAtPath(full_path, NULL, 0);
+			if (err != MZ_OK)
+				return err;
+		}
+	}
+	mz_os_close_dir(dir);
+	return MZ_OK;
+}
 
 int32_t minizip_add(const char *path, const char *password, minizip_opt *options, int32_t arg_count, const char **args)
 {
@@ -324,6 +372,7 @@ int32_t minizip_add(const char *path, const char *password, minizip_opt *options
 	int32_t err = MZ_OK;
 	int32_t err_close = MZ_OK;
 	int32_t i = 0;
+	int16_t is_dir = 0;
 	const char *filename_in_zip = NULL;
 
 	
@@ -338,12 +387,19 @@ int32_t minizip_add(const char *path, const char *password, minizip_opt *options
 	for (i = 0; i < arg_count; i += 1)
 	{
 	    filename_in_zip = args[i];
-	
-	    /* Add file system path to archive */
-	    err = mz_hq_add_path(filename_in_zip, NULL, options->include_path);
+	    printf("args[%d]:%s\n",i,filename_in_zip);
+	    //is_dir
+	    if (mz_os_is_dir(filename_in_zip) == MZ_OK)
+		    is_dir = 1;
+	    if (!is_dir)
+	    {		 
+	    	/* Add file system path to archive */
+	    	err = writeFileAtPath(filename_in_zip, NULL, options->include_path); 	
+	   } else {
+	   	err = writeFolderAtPath(filename_in_zip, NULL, 0);
+	   }
 	    if (err != MZ_OK)
-	        printf("Error %" PRId32 " adding path to archive %s\n", err, filename_in_zip);
-	}
+	      	printf("Error %" PRId32 " adding path to archive %s\n", err, filename_in_zip);
 
 	zipClose(_zip, NULL);
 	
