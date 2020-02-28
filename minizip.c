@@ -305,12 +305,12 @@ int32_t writeFileAtPath(const char *fileName, const char *password, minizip_opt 
 	}
 
 	//int error = _zipOpenEntry(_zip, fileName, &zipInfo, compressionLevel, password, aes);
-   zipInfo.store_links = options->store_links;
-   zipInfo.follow_links = options->follow_links;
+   	zipInfo.store_links = options->store_links;
+   	zipInfo.follow_links = options->follow_links;
    
-	zipOpenNewFileInZip5(_zip, fileName, &zipInfo, NULL, 0, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, password, NULL, 0, 0, 0);
+	zipOpenNewFileInZip5(_zip, fileName, &zipInfo, NULL, 0, NULL, 0, NULL, 0, options->compress_level, 0, 0, 0, 0, password, options->aes, 0, 0, 0);
 	
-	if (mz_os_is_symlink(fileName) == MZ_OK)
+ 	if (options->store_links && mz_os_is_symlink(fileName) == MZ_OK)
 	{
 		char link_path[1024];
 		err = mz_os_read_symlink(fileName, link_path, sizeof(link_path));
@@ -335,21 +335,11 @@ int32_t writeFolderAtPath(char *fileName, const char *passord, minizip_opt *opti
 	struct dirent *entry = NULL;
 	int32_t err = MZ_OK;
 	int16_t is_dir = 0;
-	const char *filename = NULL;
-	const char *filenameinzip = fileName;
-	char *wildcard_ptr = NULL;
 	char full_path[1024];
-	char path_dir[1024];
-	
-   if (mz_os_is_symlink(fileName) == MZ_OK)
-   {
-      err = writeFileAtPath(fileName, NULL, options);
-      return err;
-   }
-   
+	   
 	if (mz_os_is_dir(fileName) == MZ_OK)
 		is_dir = 1;
-	if (!is_dir)
+	if (!is_dir || (options->store_links  && mz_os_is_symlink(fileName) == MZ_OK))
 	{
 		err = writeFileAtPath(fileName, NULL, options);
 		return err;
@@ -387,7 +377,7 @@ int32_t minizip_add_compat(const char *path, const char *password, minizip_opt *
 
 	
 	printf("Archive %s\n", path);
-	_zip = zipOpen(path, APPEND_STATUS_CREATE);
+	_zip = zipOpen(path, options->append);
 	if(!_zip)
 	{
 		printf("zipOpen Error\n");
@@ -404,9 +394,9 @@ int32_t minizip_add_compat(const char *path, const char *password, minizip_opt *
 	    if (!is_dir)
 	    {		 
 	    	/* Add file system path to archive */
-	    	err = writeFileAtPath(filename_in_zip, NULL, options); 	
+	    	err = writeFileAtPath(filename_in_zip, password, options); 	
 	   } else {
-	   	err = writeFolderAtPath(filename_in_zip, NULL, options);
+	   	err = writeFolderAtPath(filename_in_zip, password, options);
 	   }
 	    if (err != MZ_OK)
 	      	printf("Error %" PRId32 " adding path to archive %s\n", err, filename_in_zip);
