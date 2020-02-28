@@ -893,7 +893,7 @@ int main(int argc, const char *argv[])
     else
     {
         /* Add files to archive */
-        err = minizip_add(path, password, &options, argc - (path_arg + 1), &argv[path_arg + 1]);
+        err = minizip_add_compat(path, password, &options, argc - (path_arg + 1), &argv[path_arg + 1]);
     }
 
     return err;
