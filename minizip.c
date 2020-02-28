@@ -21,7 +21,8 @@
 #include "mz_zip_rw.h"
 
 #include <stdio.h>  /* printf */
-
+#include "mz_compat.h"
+zipFile _zip;
 /***************************************************************************/
 
 typedef struct minizip_opt_s {
@@ -279,8 +280,6 @@ int32_t minizip_add_overwrite_cb(void *handle, void *userdata, const char *path)
     return MZ_OK;
 }
 
-#include "mz_compat.h"
-zipFile _zip;
 //add
 int32_t writeFileAtPath(const char *fileName, const char *password, minizip_opt *options)
 {
