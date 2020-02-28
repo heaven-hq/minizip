@@ -12,6 +12,7 @@
 */
 
 
+#include "stdint.h"
 #include "mz.h"
 #include "mz_os.h"
 #include "mz_strm.h"
