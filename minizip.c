@@ -60,6 +60,7 @@ int32_t minizip_extract_entry_cb(void *handle, void *userdata, mz_zip_file *file
 int32_t minizip_extract_progress_cb(void *handle, void *userdata, mz_zip_file *file_info, int64_t position);
 int32_t minizip_extract_overwrite_cb(void *handle, void *userdata, mz_zip_file *file_info, const char *path);
 int32_t minizip_extract(const char *path, const char *pattern, const char *destination, const char *password, minizip_opt *options);
+int32_t minizip_extract_compat(const char *path, const char *pattern, const char *destination, const char *password, minizip_opt *options);
 
 int32_t minizip_erase(const char *src_path, const char *target_path, int32_t arg_count, const char **args);
 
@@ -588,6 +589,253 @@ int32_t minizip_extract(const char *path, const char *pattern, const char *desti
 
 /***************************************************************************/
 
+int32_t minizip_extract_compat(const char *path, const char *pattern, const char *destination, const char *password, minizip_opt *options)
+{
+    if (path == NULL || destination == NULL)
+    {
+	printf("path or destination NULL\n");  
+	return -1;  
+    }
+    // Begin opening
+    zipFile zip = unzOpen(path);
+    if (zip == NULL)
+    {
+        printf("faild to open zip file\n");  
+        return -1;
+    }
+	
+    // Begin unzipping
+    int ret = 0;
+    ret = unzGoToFirstFile(zip);
+    if (ret != UNZ_OK && ret != MZ_END_OF_LIST)
+    {
+	printf("faild to open first file in zip file \n");  
+        unzClose(zip);
+        return -1;
+    }
+    
+    bool success = 1;
+    int crc_ret = 0;
+    unsigned char buffer[4096] = {0};
+
+    do {
+       
+            if (ret == MZ_END_OF_LIST) {
+                break;
+            }
+       
+            if (password == NULL) {
+                ret = unzOpenCurrentFile(zip);
+            } else {
+                ret = unzOpenCurrentFilePassword(zip, password);
+            }
+            
+            if (ret != UNZ_OK) {
+                printf("faild to open file in zip file \n");
+		success = 0;
+                break;
+            }
+            
+            // Reading data and write to file
+            unz_file_info fileInfo;
+            memset(&fileInfo, 0, sizeof(unz_file_info));
+            
+            ret = unzGetCurrentFileInfo(zip, &fileInfo, NULL, 0, NULL, 0, NULL, 0);
+            if (ret != UNZ_OK) {
+                printf("faild to retrieve info for file\n");
+                success = 0;
+                unzCloseCurrentFile(zip);
+                break;
+            }
+                        
+            char *filename = (char *)malloc(fileInfo.size_filename + 1);
+            if (filename == NULL)
+            {
+                success = 0;
+                break;
+            }
+            
+            unzGetCurrentFileInfo(zip, &fileInfo, filename, fileInfo.size_filename + 1, NULL, 0, NULL, 0);
+            filename[fileInfo.size_filename] = '\0';
+            
+            bool fileIsSymbolicLink = 0;
+            if (mz_zip_attrib_is_symlink(fileInfo.external_fa, fileInfo.version) == MZ_OK)
+		fileIsSymbolicLink = 1;
+	                      
+            // Check if it contains directory
+            bool isDirectory = 0;
+            if (filename[fileInfo.size_filename-1] == '/' || filename[fileInfo.size_filename-1] == '\\') {
+                isDirectory = 1;
+            }
+            //free(filename);
+            
+            char pathwfs[512];
+	    char fullPath[512];
+	    strncpy(pathwfs, destination, sizeof(pathwfs) - 1);
+	    pathwfs[sizeof(pathwfs) -1] = 0;
+	    mz_path_convert_slashes(pathwfs, MZ_PATH_SLASH_UNIX);
+	    
+	    strncpy(fullPath, pathwfs, sizeof(fullPath) - 1);
+	    fullPath[sizeof(fullPath) -1] = 0;
+           
+	    mz_path_combine(fullPath, filename, sizeof(fullPath));
+	    
+	    char fullPathorg[512];
+	    strncpy(fullPathorg, fullPath, sizeof(fullPathorg) -1);
+	    fullPathorg[sizeof(fullPathorg) -1] = 0;
+	    free(filename);
+	    
+            if (isDirectory) {
+                err = mz_dir_make(fullPath);
+            } else {
+		mz_path_remove_filename(fullPathorg);
+                err = mz_dir_make(fullPathorg);
+            }
+            if (err != MZ_OK) {
+                printf("mz_dir_make err\n");
+                unzCloseCurrentFile(zip);
+                success = 0;
+                break;
+            }
+            
+            if (mz_os_file_exists(fullPath) == MZ_OK && !isDirectory && !options->overwrite) {
+                //FIXME: couldBe CRC Check?
+                unzCloseCurrentFile(zip);
+                ret = unzGoToNextFile(zip);
+                continue;
+            }
+            
+            if (isDirectory && !fileIsSymbolicLink) {
+                // nothing to read/write for a directory
+            } else if (!fileIsSymbolicLink) {
+                // ensure we are not creating stale file entries
+                int readBytes = unzReadCurrentFile(zip, buffer, 4096);
+                if (readBytes >= 0) {
+                    FILE *fp = fopen(fullPath, "wb");
+                    while (fp) {
+                        if (readBytes > 0) {
+                            if (0 == fwrite(buffer, readBytes, 1, fp)) {
+                                if (ferror(fp)) {
+                                    printf("failed to write file (check your free space\n)");
+                                    success = 0;
+                                    break;
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                        readBytes = unzReadCurrentFile(zip, buffer, 4096);
+                        if (readBytes < 0) {
+                            // Let's assume error Z_DATA_ERROR is caused by an invalid password
+                            // Let's assume other errors are caused by Content Not Readable
+                            success = 0;
+                        }
+                    }
+                    
+                    if (fp) {
+                        fclose(fp);                    
+                        mz_os_set_file_date(fullPath, fileInfo.modified_date, fileInfo.accessed_date, NULL);                          
+                        mz_os_set_file_date(fullPathorg, fileInfo.modified_date, fileInfo.accessed_date, NULL);   
+                    }
+                    else
+                    {
+                        // if we couldn't open file descriptor we can validate global errno to see the reason
+                        int errnoSave = errno;
+                        BOOL isSeriousError = 0;
+                        switch (errnoSave) {
+                            case EISDIR:
+                                // Is a directory
+                                // assumed case
+                                break;
+                                
+                            case ENOSPC:
+                            case EMFILE:
+                                // No space left on device
+                                //  or
+                                // Too many open files
+                                isSeriousError = 1;
+                                break;
+                                
+                            default:
+                                // ignore case
+                                // Just log the error
+                            {
+                                printf("failed to open file on unzipping\n");
+                            }
+                                break;
+                        }
+                        
+                        if (isSeriousError) {
+                            // serious case                      
+                            unzCloseCurrentFile(zip);
+                            // Log the error
+			    printf("Failed to open file on unzipping\n");
+                            // Break unzipping
+                            success = 0;
+                            break;
+                        }
+                    }
+                } else {
+                    // Let's assume error Z_DATA_ERROR is caused by an invalid password
+                    // Let's assume other errors are caused by Content Not Readable
+                    success = 0;
+                    break;
+                }
+            }
+            else
+            {
+                // Assemble the path for the symbolic link
+                char destinationPath[1024];
+                int bytesRead = 0;
+		    
+		if ((bytesRead = unzReadCurrentFile(zip, buffer, 4096)) > 0)
+                {
+                    buffer[bytesRead] = 0;
+                    strncpy(destinationPath, buffer, sizeof(destinationPath) -1);
+	    	    destinationPath[sizeof(destinationPath) -1] = 0;;
+                }
+                if (bytesRead < 0) {
+                    // Let's assume error Z_DATA_ERROR is caused by an invalid password
+                    // Let's assume other errors are caused by Content Not Readable
+                    success = NO;
+                    break;
+                }
+                
+                // Check if the symlink exists and delete it if we're overwriting
+                if (options->overwrite)
+                {
+                    if (mz_os_file_exists(fullPath) == MZ_OK && mz_os_unlink(fullPath) != MZ_OK)
+                    {
+                       printf("failed to unlink\n");
+                    }
+                }
+                
+                // Create the symbolic link (making sure it stays relative if it was relative before)
+                int symlinkError = symlink(destinationPath, fullPath);
+                
+                if (symlinkError != 0)
+                {
+                    printf("failed to create symbol link\n");
+		    success = 0;
+                }
+            }
+            
+            crc_ret = unzCloseCurrentFile(zip);
+            if (crc_ret == MZ_CRC_ERROR) {
+                // CRC ERROR
+                success = 0;
+                break;
+            }
+            ret = unzGoToNextFile(zip);
+
+    } while (ret == UNZ_OK && success);
+    
+    // Close
+    unzClose(zip);   
+    return success;
+}
+/***************************************************************************/
+
 int32_t minizip_erase(const char *src_path, const char *target_path, int32_t arg_count, const char **args)
 {
     mz_zip_file *file_info = NULL;
@@ -873,7 +1121,7 @@ int main(int argc, const char *argv[])
             filename_to_extract = argv[path_arg + 1];
 
         /* Extract archive */
-        err = minizip_extract(path, filename_to_extract, destination, password, &options);
+        err = minizip_extract_compat(path, filename_to_extract, destination, password, &options);
     }
     else if (do_erase)
     {
