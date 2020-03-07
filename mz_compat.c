@@ -699,7 +699,10 @@ int unzGetCurrentFileInfo(unzFile file, unz_file_info *pfile_info, char *filenam
 
         pfile_info->compressed_size = (uint32_t)file_info->compressed_size;
         pfile_info->uncompressed_size = (uint32_t)file_info->uncompressed_size;
-
+        pfile_info->accessed_date = file_info->accessed_date;
+        pfile_info->modified_date = file_info->modified_date;
+        pfile_info->creation_date = file_info->creation_date;
+       
         if (filename_size > 0 && filename != NULL && file_info->filename != NULL)
         {
             bytes_to_copy = filename_size;
