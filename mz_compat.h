@@ -234,6 +234,9 @@ typedef struct unz_file_info_s
     uint16_t compression_method;    /* compression method              2 bytes */
     uint32_t mz_dos_date;           /* last mod file date in Dos fmt   4 bytes */
     struct tm tmu_date;
+    time_t accessed_date;
+    time_t modified_date;
+    time_t creation_date;
     uint32_t crc;                   /* crc-32                          4 bytes */
     uint32_t compressed_size;       /* compressed size                 4 bytes */
     uint32_t uncompressed_size;     /* uncompressed size               4 bytes */
