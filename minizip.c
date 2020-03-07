@@ -22,6 +22,10 @@
 #include "mz_zip_rw.h"
 
 #include <stdio.h>  /* printf */
+#include <unistd.h>
+#include <erron.h>
+#include <time.h>
+#include <stdbool.h>
 #include "mz_compat.h"
 zipFile _zip;
 /***************************************************************************/
