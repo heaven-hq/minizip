@@ -23,7 +23,7 @@
 
 #include <stdio.h>  /* printf */
 #include <unistd.h>
-#include <erron.h>
+#include <errno.h>
 #include <time.h>
 #include <stdbool.h>
 #include "mz_compat.h"
@@ -595,6 +595,7 @@ int32_t minizip_extract(const char *path, const char *pattern, const char *desti
 
 int32_t minizip_extract_compat(const char *path, const char *pattern, const char *destination, const char *password, minizip_opt *options)
 {
+    int32_t err = MZ_OK;
     if (path == NULL || destination == NULL)
     {
 	printf("path or destination NULL\n");  
@@ -745,7 +746,7 @@ int32_t minizip_extract_compat(const char *path, const char *pattern, const char
                     {
                         // if we couldn't open file descriptor we can validate global errno to see the reason
                         int errnoSave = errno;
-                        BOOL isSeriousError = 0;
+                        bool isSeriousError = 0;
                         switch (errnoSave) {
                             case EISDIR:
                                 // Is a directory
@@ -801,7 +802,7 @@ int32_t minizip_extract_compat(const char *path, const char *pattern, const char
                 if (bytesRead < 0) {
                     // Let's assume error Z_DATA_ERROR is caused by an invalid password
                     // Let's assume other errors are caused by Content Not Readable
-                    success = NO;
+                    success = 0;
                     break;
                 }
                 
