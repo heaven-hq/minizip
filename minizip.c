@@ -290,17 +290,13 @@ int32_t minizip_add_overwrite_cb(void *handle, void *userdata, const char *path)
 int32_t writeFileAtPath(const char *fileName, const char *password, minizip_opt *options)
 {
 	int32_t err = MZ_OK;
+	zip_fileinfo zipInfo = {0};
+        time_t modified_date = 0;
+	
 	FILE *input = fopen(fileName, "r");
 	if (NULL == input) {
 		return -1;
 	}
-	printf("=============\n");
-	//if (!fileName) {
-	//	fileName = path.lastPathComponent;
-	//}
-	zip_fileinfo zipInfo = {0};
-
-	//[SSZipArchive zipInfo : &zipInfo setAttributesOfItemAtPath : path];
 
 	void *buffer = malloc(16384);
 	if (buffer == NULL)
@@ -308,12 +304,15 @@ int32_t writeFileAtPath(const char *fileName, const char *password, minizip_opt 
 		fclose(input);
 		return -1;
 	}
-
-	//int error = _zipOpenEntry(_zip, fileName, &zipInfo, compressionLevel, password, aes);
+	
    	zipInfo.store_links = options->store_links;
-   	zipInfo.follow_links = options->follow_links;
-   
-	zipOpenNewFileInZip5(_zip, fileName, &zipInfo, NULL, 0, NULL, 0, NULL, 0, options->compress_level, 0, 0, 0, 0, password, options->aes, 0, 0, 0);
+   	zipInfo.follow_links = options->follow_links;   	
+	
+	mz_os_get_file_date(fileName, &modified_date, NULL, NULL);
+	mz_zip_time_t_to_tm(modified_date, &zipInfo.tmz_date);
+	zifInfo.mz_dos_date = mz_zip_time_t_to_dos_date(modified_date);
+	
+	zipOpenNewFileInZip5(_zip, fileName, &zipInfo, NULL, 0, NULL, 0, NULL, 0, options->compress_level, 0, 0, 0, 0, password, options->aes, MZ_VERSION_MADEBY, 0, 0);
 	
  	if (options->store_links && mz_os_is_symlink(fileName) == MZ_OK)
 	{
@@ -333,7 +332,7 @@ int32_t writeFileAtPath(const char *fileName, const char *password, minizip_opt 
 	fclose(input);
 	return 0;
 }
-//add
+
 int32_t writeFolderAtPath(char *fileName, const char *passord, minizip_opt *options)
 {
 	DIR *dir = NULL;
@@ -738,9 +737,10 @@ int32_t minizip_extract_compat(const char *path, const char *pattern, const char
                     }
                     
                     if (fp) {
-                        fclose(fp);                    
-                        mz_os_set_file_date(fullPath, fileInfo.modified_date, fileInfo.accessed_date, NULL);                          
-                        mz_os_set_file_date(fullPathorg, fileInfo.modified_date, fileInfo.accessed_date, NULL);   
+                        fclose(fp);
+			time_t modified_date = mz_zip_dosdate_to_time_t(fileInfo.mz_dos_date);
+                        mz_os_set_file_date(fullPath, modified_date, 0, 0);                          
+                        mz_os_set_file_date(fullPathorg, modified_date, 0, 0);   
                     }
                     else
                     {
