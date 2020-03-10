@@ -167,7 +167,7 @@ int zipOpenNewFileInZip5(zipFile file, const char *filename, const zip_fileinfo 
 
     memset(&file_info, 0, sizeof(file_info));
 
-    file_info.version_madeby = MZ_VERSION_MADEBY;
+    file_info.version_madeby = version_madeby;
     mz_os_get_file_attribs(filename, &src_attrib);
     src_sys = MZ_HOST_SYSTEM(file_info.version_madeby);
 
@@ -699,9 +699,6 @@ int unzGetCurrentFileInfo(unzFile file, unz_file_info *pfile_info, char *filenam
 
         pfile_info->compressed_size = (uint32_t)file_info->compressed_size;
         pfile_info->uncompressed_size = (uint32_t)file_info->uncompressed_size;
-        pfile_info->accessed_date = file_info->accessed_date;
-        pfile_info->modified_date = file_info->modified_date;
-        pfile_info->creation_date = file_info->creation_date;
        
         if (filename_size > 0 && filename != NULL && file_info->filename != NULL)
         {
